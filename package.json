@@ -140,6 +140,7 @@
     "generate-style-spec": "node --loader ts-node/esm --experimental-specifier-resolution=node build/generate-style-spec.ts",
     "generate-typings": "node --loader ts-node/esm --experimental-specifier-resolution=node build/generate-typings.ts",
     "generate-query-test-fixtures": "node --loader ts-node/esm --experimental-specifier-resolution=node build/generate-query-test-fixtures.ts",
+    "build-gen-dev": "npm run generate-style-code && npm run generate-struct-arrays && npm run generate-style-spec && npm run generate-shaders && rollup --configPlugin @rollup/plugin-typescript -c --environment BUILD:dev",
     "build-dev": "rollup --configPlugin @rollup/plugin-typescript -c --environment BUILD:dev",
     "watch-dev": "rollup --configPlugin @rollup/plugin-typescript -c --environment BUILD:dev --watch",
     "build-prod": "rollup --configPlugin @rollup/plugin-typescript -c --environment BUILD:production",

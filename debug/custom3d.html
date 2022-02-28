@@ -1,115 +1,158 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <title>MapLibre GL JS debug page</title>
-    <meta charset='utf-8'>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel='stylesheet' href='../dist/maplibre-gl.css' />
-    <style>
-        body { margin: 0; padding: 0; }
-        html, body, #map { height: 100%; }
-    </style>
+<meta charset="utf-8" />
+<title>Add a custom style layer</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+<script src="../dist/maplibre-gl-dev.js"></script>
+<link href="../dist/maplibre-gl.css" rel="stylesheet" />
+<style>
+	body { margin: 0; padding: 0; }
+	#map { position: absolute; top: 0; bottom: 0; width: 100%; }
+</style>
 </head>
-
 <body>
-<div id='map'></div>
-
-<script src='../dist/maplibre-gl-dev.js'></script>
+<div id="map"></div>
 <script>
+    var map = (window.map = new maplibregl.Map({
+        container: 'map',
+        zoom: 3,
+        center: [7.5, 58],
+        // style: 'https://api.maptiler.com/maps/streets/style.json?key=get_your_own_OpIi9ZULNHzrESv6T2vL',
+        style: {version: 8, layers: [], sources: {}},
+        antialias: true // create the gl context with MSAA antialiasing, so custom layers are antialiased
+    }));
 
-var map = window.map = new maplibregl.Map({
-    container: 'map',
-    zoom: 1.69,
-    center: [-9.4, -26.8],
-    bearing: 131,
-    pitch: 60,
-    style: 'https://demotiles.maplibre.org/style.json',
-    hash: true
-});
 
-class Custom {
-    constructor() {
-        this.id = 'mycustomlayer';
-        this.type = 'custom';
-        this.renderingMode = '3d';
-    }
 
-    onAdd(map, gl) {
+    // create a custom style layer to implement the WebGL content
+    var highlightLayer = {
+        id: 'highlight',
+        type: 'custom',
+        source: 'shape1',
 
-        const vertexSource = `
+        // method called when the layer is added to the map
+        // https://maplibre.org/maplibre-gl-js-docs/api/properties/#styleimageinterface#onadd
+        onAdd: function (map, gl) {
+            // create GLSL source for vertex shader
+            var vertexSource =
+            `
+                uniform mat4 u_matrix;
+                attribute vec2 a_pos;
+                void main() {
+                    gl_Position = u_matrix * vec4(a_pos, 0.0, 1.0);
+                }
+            `;
 
-        attribute vec3 aPos;
-        uniform mat4 uMatrix;
+            // create GLSL source for fragment shader
+            var fragmentSource =
+            `
+                void main() {
+                    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+                }
+            `;
 
-        void main() {
-            gl_Position = uMatrix * vec4(aPos, 1.0);
+            // create a vertex shader
+            var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vertexShader, vertexSource);
+            gl.compileShader(vertexShader);
+
+            // create a fragment shader
+            var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fragmentShader, fragmentSource);
+            gl.compileShader(fragmentShader);
+
+            // link the two shaders into a WebGL program
+            this.program = gl.createProgram();
+            gl.attachShader(this.program, vertexShader);
+            gl.attachShader(this.program, fragmentShader);
+            gl.linkProgram(this.program);
+
+            this.aPos = gl.getAttribLocation(this.program, 'a_pos');
+
+            // define vertices of the triangle to be rendered in the custom style layer
+            var helsinki = maplibregl.MercatorCoordinate.fromLngLat({
+                lng: 25.004,
+                lat: 60.239
+            });
+            var berlin = maplibregl.MercatorCoordinate.fromLngLat({
+                lng: 13.403,
+                lat: 52.562
+            });
+            var kyiv = maplibregl.MercatorCoordinate.fromLngLat({
+                lng: 30.498,
+                lat: 50.541
+            });
+
+            // create and initialize a WebGLBuffer to store vertex and color data
+            this.buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+            gl.bufferData(
+                gl.ARRAY_BUFFER,
+                new Float32Array([
+                    helsinki.x,
+                    helsinki.y,
+                    berlin.x,
+                    berlin.y,
+                    kyiv.x,
+                    kyiv.y
+                ]),
+                gl.STATIC_DRAW
+            );
+        },
+
+        // method fired on each animation frame
+        // https://maplibre.org/maplibre-gl-js-docs/api/map/#map.event:render
+        render: function (gl, matrix) {
+            gl.useProgram(this.program);
+            gl.uniformMatrix4fv(
+                gl.getUniformLocation(this.program, 'u_matrix'),
+                false,
+                matrix
+            );
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+            gl.enableVertexAttribArray(this.aPos);
+            gl.vertexAttribPointer(this.aPos, 2, gl.FLOAT, false, 0, 0);
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 3);
         }
-        `;
+    };
 
-        const fragmentSource = `
-        void main() {
-            gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
-        }
-        `;
-
-        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
-        gl.shaderSource(vertexShader, vertexSource);
-        gl.compileShader(vertexShader);
-        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-        gl.shaderSource(fragmentShader, fragmentSource);
-        gl.compileShader(fragmentShader);
-
-        this.program = gl.createProgram();
-        gl.attachShader(this.program, vertexShader);
-        gl.attachShader(this.program, fragmentShader);
-        gl.linkProgram(this.program);
-        gl.validateProgram(this.program);
-
-        this.program.aPos = gl.getAttribLocation(this.program, 'aPos');
-        this.program.uMatrix = gl.getUniformLocation(this.program, 'uMatrix');
-
-        const x = 0.5;
-        const y = 0.5;
-        const z = 0.125;
-        const d = 0.125;
-
-        const vertexArray = new Float32Array([
-            x, y, 0,
-            x + d, y, 0,
-            x, y + d, z,
-            x + d, y + d, z,
-            x, y + d + d, 0,
-            x + d, y + d + d, 0]);
-        const indexArray = new Uint16Array([
-            0, 1, 2,
-            1, 2, 3,
-            2, 3, 4,
-            3, 4, 5
-        ]);
-
-        this.vertexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, vertexArray, gl.STATIC_DRAW);
-        this.indexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexArray, gl.STATIC_DRAW);
-    }
-
-    render(gl, matrix) {
-        gl.useProgram(this.program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.enableVertexAttribArray(this.program.a_pos);
-        gl.vertexAttribPointer(this.program.aPos, 3, gl.FLOAT, false, 0, 0);
-        gl.uniformMatrix4fv(this.program.uMatrix, false, matrix);
-        gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
-    }
-}
-
-map.on('load', function() {
-    map.addLayer(new Custom());
-});
-
+    // add the custom style layer to the map
+    map.on('load', function () {
+        const delta = -7.7;
+        map.addSource('shape1',
+            {
+                'type': 'geojson',
+                'data': {
+                    "features": [
+                        {
+                            'type': 'Feature',
+                            'properties': {
+                                'color': 'red',
+                                "height": 0,
+                                "base_height": 0
+                            },
+                            'geometry': {
+                                'type': 'MultiPolygon',
+                                'coordinates': [
+                                    [// first polygon
+                                        [// first ring
+                                            [25.004, 60.239], [13.403, 52.562], [30.498, 50.541], [25.004, 60.239]
+                                        ]
+                                    ]
+                                ]
+                            }
+                        }
+                    ],
+                    "type": "FeatureCollection"
+                }
+            }
+        );
+        map.addLayer(highlightLayer);
+    });
 </script>
+
 </body>
 </html>

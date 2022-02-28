@@ -31,5 +31,5 @@ function glslToTs(code: string): string {
         .replace(/([;\(\),\{\}])\n(?=[^#])/g, '$1'); // strip more line breaks
 
     return `// This file is generated. Edit build/generate-shaders.ts, then run \`npm run codegen\`.
-export default ${JSON.stringify(code).replaceAll('"', '\'')};\n`;
+export default ${JSON.stringify(code).replace(/"/g, '\'')};\n`;
 }
